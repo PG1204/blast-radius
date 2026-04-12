@@ -40,21 +40,36 @@ public class AnalysisService {
             }
 
             String promptPayload = """
-                    You are a code-change risk analyst. Analyze the diff below and produce a JSON assessment.
-
-                    RULES:
-                    1. Output ONLY a single JSON object — no markdown, no code fences, no explanation.
-                    2. The JSON must match this exact schema:
-                       {
-                         "overallRisk": "LOW" | "MEDIUM" | "HIGH",
-                         "impactAreas": ["<affected module or component>"],
-                         "suggestedTests": ["<test description>"]
-                       }
-                    3. Do NOT add any fields beyond overallRisk, impactAreas, and suggestedTests.
-                    4. impactAreas and suggestedTests must each contain at least one entry.
-
-                    DIFF:
-                    """ + diff;
+                You are a senior backend engineer reviewing a Git diff in a Java Spring Boot service.
+                Your task is to assess RISK and propose TESTS.
+            
+                CONTEXT:
+                - Tech stack: Java 17, Spring Boot, REST controllers, service layer, JPA repositories.
+                - The diff may touch enums, DTOs, controllers, services, or validation logic.
+            
+                OUTPUT FORMAT (VERY IMPORTANT):
+                1. Output ONLY a single JSON object — no markdown, no code fences, no explanation.
+                2. The JSON must have EXACTLY these fields:
+                   {
+                     "overallRisk": "LOW" | "MEDIUM" | "HIGH",
+                     "impactAreas": ["<specific impacted component>"],
+                     "suggestedTests": ["<specific test to run>"]
+                   }
+                3. Be SPECIFIC:
+                   - In impactAreas, mention concrete classes, methods, endpoints, or modules
+                     (e.g., "OrderController#createOrder", "PaymentService", "OrderStatus enum").
+                   - In suggestedTests, describe targeted tests tied to those areas
+                     (e.g., "Add unit test for OrderStatus.SHIPPED serialization in OrderController responses").
+                4. Semantics:
+                   - LOW: Minor or localized change, unlikely to break core flows.
+                   - MEDIUM: Affects important flows but with limited blast radius.
+                   - HIGH: Affects critical flows (payments, auth, persistence) or many modules.
+                5. Always include AT LEAST 2 impactAreas and 3 suggestedTests when possible.
+            
+                Now analyze the following Git diff and return ONLY the JSON object:
+            
+                DIFF:
+                """ + diff;
 
             String rawResponse = groqClient.callChatApi(promptPayload);
             log.debug("Raw LLM response length: {} chars", rawResponse.length());
