@@ -1,0 +1,157 @@
+# Blast Radius – PR Analysis Workflow
+#
+# Prerequisites:
+#   1. Set the repository secret BLAST_RADIUS_URL to the full endpoint URL,
+#      e.g. https://my-blast-radius.example.com/analysis/pr
+#   2. The Blast Radius service must be running and reachable from GitHub-hosted runners.
+#   3. The service returns JSON: { "overallRisk": "...", "impactAreas": [...], "suggestedTests": [...] }
+
+name: Blast Radius Analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute diff and call Blast Radius API
+        env:
+          BLAST_RADIUS_URL: ${{ secrets.BLAST_RADIUS_URL }}
+        run: |
+          set -euo pipefail
+
+          BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
+          HEAD_REF="HEAD"
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          TARGET_BRANCH="${{ github.event.pull_request.head.ref }}"
+
+          # Generate the diff between the PR base and head
+          DIFF=$(git diff "$BASE_REF"..."$HEAD_REF" || true)
+
+          if [ -z "$DIFF" ]; then
+            echo "::warning::No diff detected between $BASE_REF and $HEAD_REF"
+            # Write a synthetic error response so downstream steps still work
+            cat > response.json <<'EMPTY'
+          {"overallRisk":"ERROR","impactAreas":[],"suggestedTests":[]}
+          EMPTY
+            exit 0
+          fi
+
+          # Build JSON payload using jq to safely escape the diff string
+          PAYLOAD=$(jq -n \
+            --arg base "$BASE_BRANCH" \
+            --arg target "$TARGET_BRANCH" \
+            --arg diff "$DIFF" \
+            '{ baseBranch: $base, targetBranch: $target, diff: $diff }')
+
+          # Call the Blast Radius API
+          HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$BLAST_RADIUS_URL")
+
+          echo "Blast Radius API returned HTTP $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Blast Radius API returned HTTP $HTTP_CODE"
+            cat response.json || true
+            exit 1
+          fi
+
+          # Validate that response.json is valid JSON
+          if ! jq empty response.json 2>/dev/null; then
+            echo "::error::Blast Radius API returned invalid JSON"
+            cat response.json
+            exit 1
+          fi
+
+      - name: Extract response fields
+        run: |
+          set -euo pipefail
+
+          # Extract overallRisk with a fallback
+          RISK=$(jq -r '.overallRisk // "UNKNOWN"' response.json)
+          echo "BLAST_RISK=$RISK" >> "$GITHUB_ENV"
+
+          # Extract impactAreas as a markdown bullet list (one per line)
+          IMPACT=$(jq -r '
+            if (.impactAreas // [] | length) > 0
+            then .impactAreas[] | "- " + .
+            else "- _None reported_"
+            end
+          ' response.json)
+
+          # Write multiline value using heredoc delimiter
+          {
+            echo "BLAST_IMPACT<<BLAST_EOF"
+            echo "$IMPACT"
+            echo "BLAST_EOF"
+          } >> "$GITHUB_ENV"
+
+          # Extract suggestedTests as a markdown bullet list
+          TESTS=$(jq -r '
+            if (.suggestedTests // [] | length) > 0
+            then .suggestedTests[] | "- " + .
+            else "- _None suggested_"
+            end
+          ' response.json)
+
+          {
+            echo "BLAST_TESTS<<BLAST_EOF"
+            echo "$TESTS"
+            echo "BLAST_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Post PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const risk = process.env.BLAST_RISK || 'UNKNOWN';
+            const impact = process.env.BLAST_IMPACT || '- _None reported_';
+            const tests = process.env.BLAST_TESTS || '- _None suggested_';
+
+            const riskEmoji = {
+              'LOW': '🟢',
+              'MEDIUM': '🟡',
+              'HIGH': '🔴',
+              'ERROR': '⚠️',
+              'PARSING_ERROR': '⚠️',
+              'UNKNOWN': '❓'
+            };
+
+            const emoji = riskEmoji[risk] || '❓';
+
+            const body = [
+              '## 💥 Blast Radius Analysis',
+              '',
+              `**Overall Risk:** ${emoji} ${risk}`,
+              '',
+              '### 🔍 Impact Areas',
+              impact,
+              '',
+              '### 🧪 Suggested Tests',
+              tests,
+              '',
+              '---',
+              `*Analyzed by Blast Radius (Spring Boot + Groq LLM) • ${new Date().toISOString().slice(0, 10)}*`
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
