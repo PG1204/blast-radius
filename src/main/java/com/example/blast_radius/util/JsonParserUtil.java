@@ -4,6 +4,10 @@ import com.example.blast_radius.model.PrAnalysisResponse;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+/**
+ * Stateless helpers for parsing LLM output into DTOs.
+ * Strips markdown fences, extracts the JSON object, then deserializes.
+ */
 public final class JsonParserUtil {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
@@ -14,7 +18,8 @@ public final class JsonParserUtil {
 
     /**
      * Strips markdown code fences and surrounding text, then parses into PrAnalysisResponse.
-     * Handles patterns like: ```json\n{...}\n```, ```\n{...}\n```, or raw JSON.
+     * Handles: ```json\n{...}\n```, ```\n{...}\n```, leading/trailing prose, or raw JSON.
+     * Throws on parse failure so the caller can map to PARSING_ERROR.
      */
     public static PrAnalysisResponse toPrAnalysisResponse(String raw) throws Exception {
         String cleaned = stripMarkdownFences(raw);
@@ -34,12 +39,10 @@ public final class JsonParserUtil {
 
         // Strip ```json ... ``` or ``` ... ``` fences
         if (trimmed.startsWith("```")) {
-            // Remove opening fence line (e.g., "```json\n" or "```\n")
             int firstNewline = trimmed.indexOf('\n');
             if (firstNewline != -1) {
                 trimmed = trimmed.substring(firstNewline + 1);
             }
-            // Remove closing fence
             int lastFence = trimmed.lastIndexOf("```");
             if (lastFence != -1) {
                 trimmed = trimmed.substring(0, lastFence);
@@ -47,7 +50,7 @@ public final class JsonParserUtil {
             return trimmed.strip();
         }
 
-        // No fences — try to extract the JSON object between first '{' and last '}'
+        // No fences — extract JSON object between first '{' and last '}'
         int start = trimmed.indexOf('{');
         int end = trimmed.lastIndexOf('}');
         if (start != -1 && end > start) {
