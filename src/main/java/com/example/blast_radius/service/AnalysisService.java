@@ -88,42 +88,52 @@ public class AnalysisService {
 
     private String buildPrompt(String diff) {
         return """
-                You are a senior backend engineer reviewing a Git diff in a Java Spring Boot service.
-                Your task is to assess RISK and propose TESTS.
+               You are a senior backend engineer reviewing a Git diff in a Java Spring Boot service.
+               Your task is to assess RISK and propose TESTS.
 
-                CONTEXT:
-                - Tech stack: Java 17, Spring Boot, REST controllers, service layer, JPA repositories.
-                - The diff may touch enums, DTOs, controllers, services, or validation logic.
+               CONTEXT:
+               - Tech stack: Java 17, Spring Boot, REST controllers, service layer, JPA repositories.
+               - The diff may touch enums, DTOs, controllers, services, or validation logic.
 
-                OUTPUT FORMAT (VERY IMPORTANT):
-                1. Output ONLY a single JSON object — no markdown, no code fences, no explanation.
-                2. The JSON must have EXACTLY these fields:
-                   {
-                     "overallRisk": "LOW" | "MEDIUM" | "HIGH",
-                     "impactAreas": ["<specific impacted component>"],
-                     "suggestedTests": ["<specific test to run>"]
-                   }
-                3. Be SPECIFIC and SPRING-BOOT AWARE:
-                   - In impactAreas, mention concrete Spring components:
-                     - @RestController methods (e.g., "OrderController#createOrder").
-                     - @Service methods (e.g., "OrderService#updateStatus").
-                     - JPA entities/enums (e.g., "Order entity", "OrderStatus enum").
-                     - Repository methods (e.g., "OrderRepository#findByStatus").
-                   - In suggestedTests, tie tests to those components:
-                     - "Add unit test for OrderService#updateStatus covering NEW→SHIPPED and RETURNED flows."
-                     - "Add @WebMvcTest for GET /orders/{id} to verify JSON serialization of all OrderStatus values."
-                     - "Add persistence test ensuring OrderStatus enum values are stored and read correctly."
-                4. Semantics:
-                   - LOW: Minor or localized change, unlikely to break core flows.
-                   - MEDIUM: Affects important flows but with limited blast radius.
-                   - HIGH: Affects critical flows (payments, auth, persistence) or many modules.
-                5. When the change is more than a trivial refactor, aim for:
-                   - AT LEAST 2 impactAreas.
-                   - AT LEAST 3 suggestedTests, mixing unit and Spring tests where relevant.
+               OUTPUT FORMAT (VERY IMPORTANT):
+               1. Output ONLY a single JSON object — no markdown, no code fences, no explanation.
+               2. The JSON must have EXACTLY these fields:
+                  {
+                    "overallRisk": "LOW" | "MEDIUM" | "HIGH",
+                    "impactAreas": ["<specific impacted component>"],
+                    "suggestedTests": ["<specific test to run>"]
+                  }
 
-                Now analyze the following Git diff and return ONLY the JSON object:
+               3. Be SPECIFIC and SPRING-BOOT AWARE:
+                  - In impactAreas, mention concrete Spring components that appear in the diff:
+                    - @RestController methods (e.g., "OrderController#createOrder").
+                    - @Service methods (e.g., "OrderService#updateStatus").
+                    - JPA entities/enums (e.g., "Order entity", "OrderStatus enum").
+                    - Repository methods (e.g., "OrderRepository#findByStatus").
+                    - For DTOs or simple POJOs, name the class and method (e.g., "PrAnalysisRequest#getTargetBranch").
+                  - In suggestedTests, tie tests to those components:
+                    - "Add unit test for OrderService#updateStatus covering NEW→SHIPPED and RETURNED flows."
+                    - "Add @WebMvcTest for GET /orders/{id} to verify JSON serialization of all OrderStatus values."
+                    - "Add persistence test ensuring OrderStatus enum values are stored and read correctly."
 
-                DIFF:
+               4. Source of truth — ONLY use the diff:
+                  - Base your reasoning strictly on the classes, methods, and fields visible in the diff.
+                  - Do NOT invent new services, methods, or endpoints that are not mentioned in the diff.
+                  - If you need to refer to behavior that is not named explicitly, describe it generically
+                    (e.g., "logic that compares baseBranch and targetBranch") instead of fabricating API names.
+
+               5. Risk semantics:
+                  - LOW: Minor or localized change, unlikely to break core flows.
+                  - MEDIUM: Affects important flows but with limited blast radius.
+                  - HIGH: Affects critical flows (payments, auth, persistence) or many modules.
+
+               6. When the change is more than a trivial refactor, aim for:
+                  - AT LEAST 2 impactAreas.
+                  - AT LEAST 3 suggestedTests, mixing unit and Spring tests where relevant.
+
+               Now analyze the following Git diff and return ONLY the JSON object:
+
+               DIFF:
                 """ + diff;
     }
 
