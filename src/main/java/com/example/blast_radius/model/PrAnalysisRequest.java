@@ -14,7 +14,7 @@ public class PrAnalysisRequest {
     }
 
     public String getTargetBranch() {
-        return targetBranch;
+        return baseBranch;
     }
 
     public void setTargetBranch(String targetBranch) {
