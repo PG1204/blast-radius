@@ -66,9 +66,13 @@ jobs:
           echo "Blast Radius API returned HTTP $HTTP_CODE"
 
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Blast Radius API returned HTTP $HTTP_CODE"
+            echo "::warning::Blast Radius API unreachable (HTTP $HTTP_CODE) — posting advisory, not failing the PR"
             cat response.json || true
-            exit 1
+            # Ephemeral dev service down (e.g. ngrok offline) → advisory comment instead of a red check.
+            cat > response.json <<'UNAVAIL'
+          {"overallRisk":"UNKNOWN","impactAreas":["Analysis service was unreachable — this check is advisory and does not block the PR."],"suggestedTests":[]}
+          UNAVAIL
+            exit 0
           fi
 
           # Validate that response.json is valid JSON
