@@ -128,6 +128,21 @@ class AnalysisServiceTest {
         assertRiskCounterIncremented("LOW", 1);
     }
 
+    // ── Metadata ──────────────────────────────────────────────────────
+
+    @Test
+    void analyze_setsModelNameFromGroqClient() throws Exception {
+        String validJson = "{\"overallRisk\":\"LOW\",\"impactAreas\":[],\"suggestedTests\":[]}";
+        when(groqClient.callChatApi(anyString())).thenReturn(validJson);
+        when(groqClient.getModel()).thenReturn("configured-model");
+
+        PrAnalysisResponse response =
+                analysisService.analyze(requestWithDiff("diff --git a/Foo.java b/Foo.java"));
+
+        assertEquals("configured-model", response.getModelName());
+        assertEquals("v1.0.0", response.getPromptVersion());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────
 
     private PrAnalysisRequest requestWithDiff(String diff) {

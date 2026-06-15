@@ -23,7 +23,6 @@ public class AnalysisService {
     private static final int MAX_DIFF_LENGTH = 32_768;
 
     private static final String PROMPT_VERSION = "v1.0.0";
-    private static final String MODEL_NAME = "qwen/qwen3-32b";
 
     private final GroqClient groqClient;
     private final Counter totalCounter;
@@ -66,10 +65,10 @@ public class AnalysisService {
             PrAnalysisResponse response = JsonParserUtil.toPrAnalysisResponse(rawResponse);
             response.setAnalysisId(analysisId);
             response.setPromptVersion(PROMPT_VERSION);
-            response.setModelName(MODEL_NAME);
+            response.setModelName(groqClient.getModel());
             recordRisk(response.getOverallRisk());
             log.info("[{}] Analysis complete — risk: {}, promptVersion={}, model={}",
-                    analysisId, response.getOverallRisk(), PROMPT_VERSION, MODEL_NAME);
+                    analysisId, response.getOverallRisk(), PROMPT_VERSION, groqClient.getModel());
             return response;
         } catch (Exception parseEx) {
             log.warn("[{}] Failed to parse LLM response: {}. Raw (first 500 chars): {}",
@@ -236,7 +235,7 @@ public class AnalysisService {
         recordRisk(risk);
         PrAnalysisResponse response = PrAnalysisResponse.error(risk, analysisId);
         response.setPromptVersion(PROMPT_VERSION);
-        response.setModelName(MODEL_NAME);
+        response.setModelName(groqClient.getModel());
         return response;
     }
 
