@@ -74,13 +74,6 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
                 "Request body exceeds limit of " + maxRequestBytes + " bytes");
     }
 
-    /** Signals that a request body grew past the configured limit mid-read. */
-    static final class PayloadTooLargeException extends IOException {
-        PayloadTooLargeException(long limit) {
-            super("Request body exceeds limit of " + limit + " bytes");
-        }
-    }
-
     /** Wraps a request so its body stream is bounded to {@code limit} bytes. */
     private static final class LimitingRequestWrapper extends HttpServletRequestWrapper {
         private final long limit;
