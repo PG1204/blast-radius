@@ -1,0 +1,8 @@
+{
+  "overallRisk" : "HIGH",
+  "impactAreas" : [ "Any service, controller, or job that consumes PrAnalysisRequest base/target branch information", "PrAnalysisRequest#getBaseBranch usage in services, controllers, and jobs that depend on base vs target branch" ],
+  "suggestedTests" : [ "Add unit test for BranchComparisonService#validateBranches to verify correct behavior when using PrAnalysisRequest#getBaseBranch", "Add @WebMvcTest for POST /analyze-pr to validate endpoint handles branch comparison logic with swapped base/target values", "Add integration test verifying end-to-end PR analysis workflow with PrAnalysisRequest.getBaseBranch returning the correct value", "Add test to validate database persistence layer stores branch data correctly relative to PrAnalysisRequest getter logic", "Add contract test to verify API consumers properly handle the reversed base/target branch values from the PrAnalysisRequest" ],
+  "analysisId" : "ebce1403",
+  "promptVersion" : "v1.0.0",
+  "modelName" : "qwen/qwen3-32b"
+}

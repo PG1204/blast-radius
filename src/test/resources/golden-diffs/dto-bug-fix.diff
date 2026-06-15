@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/example/blast_radius/model/PrAnalysisRequest.java b/src/main/java/com/example/blast_radius/model/PrAnalysisRequest.java
+index 7aa0e76..5faaab0 100644
+--- a/src/main/java/com/example/blast_radius/model/PrAnalysisRequest.java
++++ b/src/main/java/com/example/blast_radius/model/PrAnalysisRequest.java
+@@ -6,7 +6,7 @@ public class PrAnalysisRequest {
+     private String diff;
+ 
+     public String getBaseBranch() {
+-        return baseBranch;
++        return targetBranch;
+     }
+ 
+     public void setBaseBranch(String baseBranch) {

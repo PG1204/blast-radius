@@ -1,0 +1,8 @@
+{
+  "overallRisk" : "MEDIUM",
+  "impactAreas" : [ "OrderService flows that depend on OrderStatus values (including RETURNED)", "OrderRepository#findByStatus queries and similar repository methods that filter by OrderStatus", "OrderController endpoints that expose or update OrderStatus values (including RETURNED)" ],
+  "suggestedTests" : [ "Add unit test for OrderService#processOrder covering transitions involving RETURNED status", "Add integration test for OrderRepository.findByStatus() with all OrderStatus values", "Add @WebMvcTest for /api/orders endpoint to validate enum serialization/deserialization with RETURNED", "Add persistence test to verify OrderStatus enum is stored correctly in database using EnumType.STRING" ],
+  "analysisId" : "edf14883",
+  "promptVersion" : "v1.0.0",
+  "modelName" : "qwen/qwen3-32b"
+}

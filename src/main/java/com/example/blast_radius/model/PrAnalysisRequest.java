@@ -6,7 +6,7 @@ public class PrAnalysisRequest {
     private String diff;
 
     public String getBaseBranch() {
-        return baseBranch;
+        return targetBranch;
     }
 
     public void setBaseBranch(String baseBranch) {

@@ -1,0 +1,14 @@
+diff --git a/src/main/java/com/example/blast_radius/model/OrderStatus.java b/src/main/java/com/example/blast_radius/model/OrderStatus.java
+new file mode 100644
+index 0000000..327363b
+--- /dev/null
++++ b/src/main/java/com/example/blast_radius/model/OrderStatus.java
+@@ -0,0 +1,8 @@
++package com.example.blast_radius.model;
++
++public enum OrderStatus {
++    NEW,
++    PAID,
++    SHIPPED,
++    RETURNED
++}

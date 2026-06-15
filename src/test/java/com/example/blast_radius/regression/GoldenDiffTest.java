@@ -17,26 +17,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Locale;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
-/**
- * Integration test that sends golden diff files through the real analysis pipeline
- * (AnalysisService → GroqClient → LLM) and logs the JSON output for manual inspection.
- *
- * <p>Skipped automatically when GROQ_API_KEY is not set.
- *
- * <h3>Resource layout</h3>
- * <pre>
- *   src/test/resources/golden-diffs/
- *     dto-bug-fix.diff
- *     enum-extension.diff
- *     controller-change.diff
- *     service-logic-change.diff
- *     security-config-change.diff
- * </pre>
- */
 @SpringBootTest
 @EnabledIfEnvironmentVariable(named = "GROQ_API_KEY", matches = ".+")
 class GoldenDiffTest {
@@ -46,23 +35,33 @@ class GoldenDiffTest {
     private static final ObjectMapper PRETTY_MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private static final Path GOLDEN_DIFFS_DIR =
             Paths.get("src/test/resources/golden-diffs");
+
+    private static final Path GOLDEN_RESULTS_DIR =
+            Paths.get("src/test/resources/golden-results");
+
+    private static final boolean UPDATE_MODE =
+            Boolean.getBoolean("golden.update");
 
     @Autowired
     private AnalysisService analysisService;
 
-    /**
-     * Discovers every {@code *.diff} file under {@code golden-diffs/}.
-     * Each file becomes a separate parameterized test case.
-     */
     static Stream<Path> goldenDiffFiles() throws IOException {
         if (!Files.isDirectory(GOLDEN_DIFFS_DIR)) {
+            System.out.println("GoldenDiffTest: directory not found: " + GOLDEN_DIFFS_DIR.toAbsolutePath());
             return Stream.empty();
         }
-        return Files.list(GOLDEN_DIFFS_DIR)
-                .filter(p -> p.toString().endsWith(".diff"))
-                .sorted();
+        try (Stream<Path> stream = Files.list(GOLDEN_DIFFS_DIR)) {
+            var files = stream
+                    .filter(p -> p.toString().endsWith(".diff"))
+                    .sorted()
+                    .toList();
+            System.out.println("GoldenDiffTest: discovered diff files: " + files);
+            return files.stream();
+        }
     }
 
     @ParameterizedTest(name = "{0}")
@@ -76,19 +75,72 @@ class GoldenDiffTest {
         request.setTargetBranch("feature/golden-test");
         request.setDiff(diff);
 
-        PrAnalysisResponse response = analysisService.analyze(request);
+        PrAnalysisResponse actual = analysisService.analyze(request);
 
-        assertNotNull(response, "Response should never be null");
-        assertNotNull(response.getOverallRisk(), "overallRisk should never be null");
+        assertNotNull(actual, "Response should never be null");
+        assertNotNull(actual.getOverallRisk(), "overallRisk should never be null");
 
-        String json = PRETTY_MAPPER.writeValueAsString(response);
-        log.info("\n=== Golden result for [{}] ===\n{}", fileName, json);
-
-        // Optionally persist the result for later comparison
-        Path resultsDir = Paths.get("src/test/resources/golden-results");
-        Files.createDirectories(resultsDir);
         String resultName = fileName.replace(".diff", ".json");
-        Files.writeString(resultsDir.resolve(resultName), json);
-        log.info("Wrote golden result to golden-results/{}", resultName);
+        Path goldenPath = GOLDEN_RESULTS_DIR.resolve(resultName);
+
+        if (UPDATE_MODE || !Files.exists(goldenPath)) {
+            Files.createDirectories(GOLDEN_RESULTS_DIR);
+            String json = PRETTY_MAPPER.writeValueAsString(actual);
+            Files.writeString(goldenPath, json);
+            log.info("GoldenDiffTest[update]: wrote {}", goldenPath);
+            return;
+        }
+
+        String expectedJson = Files.readString(goldenPath);
+        PrAnalysisResponse expected = MAPPER.readValue(expectedJson, PrAnalysisResponse.class);
+
+        assertSameRisk(expected, actual);
+        assertImpactAreasContainAnchors(expected, actual);
+        assertSuggestedTestsReasonable(expected, actual);
+    }
+
+    private void assertSameRisk(PrAnalysisResponse expected, PrAnalysisResponse actual) {
+        assertEquals(expected.getOverallRisk(), actual.getOverallRisk(),
+                "overallRisk mismatch");
+    }
+
+    private void assertImpactAreasContainAnchors(PrAnalysisResponse expected, PrAnalysisResponse actual) {
+        List<String> expectedAreas = expected.getImpactAreas();
+        if (expectedAreas == null || expectedAreas.isEmpty()) {
+            return;
+        }
+        List<String> actualAreas = actual.getImpactAreas();
+        if (actualAreas == null || actualAreas.isEmpty()) {
+            fail("Expected impactAreas to contain anchors but actual impactAreas is empty");
+            return;
+        }
+
+        for (String expectedEntry : expectedAreas) {
+            if (expectedEntry == null || expectedEntry.isBlank()) {
+                continue;
+            }
+            String anchor = expectedEntry.trim().split("\\s+", 2)[0];
+            String anchorLower = anchor.toLowerCase(Locale.ROOT);
+            boolean matched = actualAreas.stream()
+                    .filter(a -> a != null)
+                    .anyMatch(a -> a.toLowerCase(Locale.ROOT).contains(anchorLower));
+            assertTrue(matched,
+                    "No actual impactArea contains anchor '" + anchor + "' (actual: " + actualAreas + ")");
+        }
+    }
+
+    private void assertSuggestedTestsReasonable(PrAnalysisResponse expected, PrAnalysisResponse actual) {
+        List<String> expectedTests = expected.getSuggestedTests();
+        if (expectedTests == null || expectedTests.isEmpty()) {
+            return;
+        }
+        List<String> actualTests = actual.getSuggestedTests();
+        if (actualTests == null || actualTests.isEmpty()) {
+            fail("Expected suggestedTests but actual suggestedTests is empty");
+            return;
+        }
+        int minRequired = Math.max(1, expectedTests.size() - 1);
+        assertTrue(actualTests.size() >= minRequired,
+                "Expected at least " + minRequired + " suggestedTests, got " + actualTests.size());
     }
 }

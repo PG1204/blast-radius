@@ -1,0 +1,12 @@
+diff --git a/src/main/java/com/example/blast_radius/BlastRadiusApplication.java b/src/main/java/com/example/blast_radius/BlastRadiusApplication.java
+index abc1234..def5678 100644
+--- a/src/main/java/com/example/blast_radius/BlastRadiusApplication.java
++++ b/src/main/java/com/example/blast_radius/BlastRadiusApplication.java
+@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
+ @SpringBootApplication
+ public class BlastRadiusApplication {
+
++	// Spring Boot entry point for the Blast Radius PR analysis service.
+ 	public static void main(String[] args) {
+ 		SpringApplication.run(BlastRadiusApplication.class, args);
+ 	}

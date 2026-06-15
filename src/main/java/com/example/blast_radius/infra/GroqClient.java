@@ -20,7 +20,7 @@ public class GroqClient {
 
     private static final Logger log = LoggerFactory.getLogger(GroqClient.class);
 
-    private static final int MAX_ATTEMPTS = 2;
+    private static final int MAX_ATTEMPTS = 4;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(20);
 

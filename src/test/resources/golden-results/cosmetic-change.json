@@ -1,0 +1,8 @@
+{
+  "overallRisk" : "LOW",
+  "impactAreas" : [ "Source comments in BlastRadiusApplication" ],
+  "suggestedTests" : [ "Re-run the existing unit and integration test suite to confirm no regressions" ],
+  "analysisId" : "85f66777",
+  "promptVersion" : "v1.0.0",
+  "modelName" : "qwen/qwen3-32b"
+}

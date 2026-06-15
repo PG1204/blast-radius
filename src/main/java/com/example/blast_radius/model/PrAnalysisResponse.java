@@ -13,6 +13,12 @@ public class PrAnalysisResponse {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String analysisId;
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String promptVersion;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String modelName;
+
     public OverallRisk getOverallRisk() {
         return overallRisk;
     }
@@ -43,6 +49,22 @@ public class PrAnalysisResponse {
 
     public void setAnalysisId(String analysisId) {
         this.analysisId = analysisId;
+    }
+
+    public String getPromptVersion() {
+        return promptVersion;
+    }
+
+    public void setPromptVersion(String promptVersion) {
+        this.promptVersion = promptVersion;
+    }
+
+    public String getModelName() {
+        return modelName;
+    }
+
+    public void setModelName(String modelName) {
+        this.modelName = modelName;
     }
 
     /** Factory for error/failure responses. */
