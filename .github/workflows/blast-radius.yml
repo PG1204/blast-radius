@@ -3,8 +3,10 @@
 # Prerequisites:
 #   1. Set the repository secret BLAST_RADIUS_URL to the full endpoint URL,
 #      e.g. https://my-blast-radius.example.com/analysis/pr
-#   2. The Blast Radius service must be running and reachable from GitHub-hosted runners.
-#   3. The service returns JSON: { "overallRisk": "...", "impactAreas": [...], "suggestedTests": [...] }
+#   2. If the service enforces auth (BLAST_RADIUS_API_KEY set on the service),
+#      set the repository secret BLAST_RADIUS_API_KEY to the same value.
+#   3. The Blast Radius service must be running and reachable from GitHub-hosted runners.
+#   4. The service returns JSON: { "overallRisk": "...", "impactAreas": [...], "suggestedTests": [...] }
 
 name: Blast Radius Analysis
 
@@ -29,6 +31,7 @@ jobs:
       - name: Compute diff and call Blast Radius API
         env:
           BLAST_RADIUS_URL: ${{ secrets.BLAST_RADIUS_URL }}
+          BLAST_RADIUS_API_KEY: ${{ secrets.BLAST_RADIUS_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -42,9 +45,9 @@ jobs:
 
           if [ -z "$DIFF" ]; then
             echo "::warning::No diff detected between $BASE_REF and $HEAD_REF"
-            # Write a synthetic error response so downstream steps still work
+            # Write a synthetic response so downstream steps still work
             cat > response.json <<'EMPTY'
-          {"overallRisk":"ERROR","impactAreas":[],"suggestedTests":[]}
+          {"overallRisk":"UNKNOWN","impactAreas":["No diff detected between base and head — nothing to analyze."],"suggestedTests":[]}
           EMPTY
             exit 0
           fi
@@ -56,10 +59,17 @@ jobs:
             --arg diff "$DIFF" \
             '{ baseBranch: $base, targetBranch: $target, diff: $diff }')
 
+          # Authenticate when the service requires it (X-API-Key, see ApiKeyAuthFilter)
+          CURL_AUTH=()
+          if [ -n "${BLAST_RADIUS_API_KEY:-}" ]; then
+            CURL_AUTH=(-H "X-API-Key: ${BLAST_RADIUS_API_KEY}")
+          fi
+
           # Call the Blast Radius API
           HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
+            "${CURL_AUTH[@]}" \
             -d "$PAYLOAD" \
             "$BLAST_RADIUS_URL")
 
@@ -131,14 +141,18 @@ jobs:
               'LOW': '🟢',
               'MEDIUM': '🟡',
               'HIGH': '🔴',
-              'ERROR': '⚠️',
+              'ERROR_UPSTREAM': '⚠️',
               'PARSING_ERROR': '⚠️',
               'UNKNOWN': '❓'
             };
 
             const emoji = riskEmoji[risk] || '❓';
 
+            // Hidden marker so re-runs update the existing comment instead of stacking new ones
+            const marker = '<!-- blast-radius-analysis -->';
+
             const body = [
+              marker,
               '## 💥 Blast Radius Analysis',
               '',
               `**Overall Risk:** ${emoji} ${risk}`,
@@ -153,9 +167,27 @@ jobs:
               `*Analyzed by Blast Radius (Spring Boot + Groq LLM) • ${new Date().toISOString().slice(0, 10)}*`
             ].join('\n');
 
-            await github.rest.issues.createComment({
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: body
+              per_page: 100
             });
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
