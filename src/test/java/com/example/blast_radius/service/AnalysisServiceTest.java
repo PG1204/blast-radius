@@ -23,12 +23,14 @@ class AnalysisServiceTest {
     private GroqClient groqClient;
 
     private SimpleMeterRegistry meterRegistry;
+    private PromptTemplate promptTemplate;
     private AnalysisService analysisService;
 
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        analysisService = new AnalysisService(groqClient, meterRegistry);
+        promptTemplate = new PromptTemplate();
+        analysisService = new AnalysisService(groqClient, promptTemplate, meterRegistry);
     }
 
     // ── Blank diff ────────────────────────────────────────────────────
@@ -140,7 +142,7 @@ class AnalysisServiceTest {
                 analysisService.analyze(requestWithDiff("diff --git a/Foo.java b/Foo.java"));
 
         assertEquals("configured-model", response.getModelName());
-        assertEquals("v1.0.0", response.getPromptVersion());
+        assertEquals(promptTemplate.getVersion(), response.getPromptVersion());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
