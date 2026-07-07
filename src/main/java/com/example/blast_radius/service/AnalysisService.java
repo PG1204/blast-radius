@@ -39,9 +39,11 @@ public class AnalysisService {
     public PrAnalysisResponse analyze(PrAnalysisRequest request) {
         String analysisId = UUID.randomUUID().toString().substring(0, 8);
 
+        // Invalid client input, not an upstream failure — same category as an
+        // unparseable request body (see GlobalExceptionHandler).
         if (request.getDiff() == null || request.getDiff().isBlank()) {
             log.warn("[{}] Received analysis request with null or blank diff", analysisId);
-            return recordAndReturn(OverallRisk.ERROR_UPSTREAM, analysisId);
+            return recordAndReturn(OverallRisk.PARSING_ERROR, analysisId);
         }
 
         log.info("[{}] Starting analysis — diff length: {} chars", analysisId, request.getDiff().length());

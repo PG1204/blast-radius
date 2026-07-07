@@ -34,34 +34,34 @@ class AnalysisServiceTest {
     // ── Blank diff ────────────────────────────────────────────────────
 
     @Test
-    void analyze_returnsErrorUpstream_whenDiffIsNull() {
+    void analyze_returnsParsingError_whenDiffIsNull() {
         PrAnalysisRequest request = new PrAnalysisRequest();
         request.setDiff(null);
 
         PrAnalysisResponse response = analysisService.analyze(request);
 
-        assertEquals(OverallRisk.ERROR_UPSTREAM, response.getOverallRisk());
+        assertEquals(OverallRisk.PARSING_ERROR, response.getOverallRisk());
         assertTrue(response.getImpactAreas().isEmpty());
         assertTrue(response.getSuggestedTests().isEmpty());
         assertNotNull(response.getAnalysisId());
 
         assertTotalCounterIncremented(1);
-        assertRiskCounterIncremented("ERROR_UPSTREAM", 1);
+        assertRiskCounterIncremented("PARSING_ERROR", 1);
     }
 
     @Test
-    void analyze_returnsErrorUpstream_whenDiffIsBlank() {
+    void analyze_returnsParsingError_whenDiffIsBlank() {
         PrAnalysisRequest request = new PrAnalysisRequest();
         request.setDiff("   ");
 
         PrAnalysisResponse response = analysisService.analyze(request);
 
-        assertEquals(OverallRisk.ERROR_UPSTREAM, response.getOverallRisk());
+        assertEquals(OverallRisk.PARSING_ERROR, response.getOverallRisk());
         assertTrue(response.getImpactAreas().isEmpty());
         assertTrue(response.getSuggestedTests().isEmpty());
 
         assertTotalCounterIncremented(1);
-        assertRiskCounterIncremented("ERROR_UPSTREAM", 1);
+        assertRiskCounterIncremented("PARSING_ERROR", 1);
     }
 
     // ── Groq API failure ──────────────────────────────────────────────
