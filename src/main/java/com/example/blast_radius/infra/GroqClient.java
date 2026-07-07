@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -23,10 +24,6 @@ public class GroqClient {
 
     private static final Logger log = LoggerFactory.getLogger(GroqClient.class);
 
-    private static final int MAX_ATTEMPTS = 4;
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration READ_TIMEOUT = Duration.ofSeconds(20);
-
     /** HTTP 429 — rate limited. A 4xx, but retryable (unlike other client errors). */
     private static final int HTTP_TOO_MANY_REQUESTS = 429;
 
@@ -34,36 +31,52 @@ public class GroqClient {
     static final long DEFAULT_BASE_BACKOFF_MILLIS = 500L;
     static final long DEFAULT_MAX_BACKOFF_MILLIS = 8_000L;
 
+    static final int DEFAULT_MAX_ATTEMPTS = 4;
+    static final long DEFAULT_CONNECT_TIMEOUT_MILLIS = 5_000L;
+    static final long DEFAULT_READ_TIMEOUT_MILLIS = 20_000L;
+
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final long baseBackoffMillis;
     private final long maxBackoffMillis;
+    private final int maxAttempts;
+    private final Duration readTimeout;
 
-    @Value("${groq.api.key}")
-    private String apiKey;
+    private final String apiKey;
+    private final String apiUrl;
+    private final String model;
 
-    @Value("${groq.api.url}")
-    private String apiUrl;
-
-    @Value("${groq.api.model}")
-    private String model;
-
-    public GroqClient() {
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(CONNECT_TIMEOUT)
-                .build();
-        this.objectMapper = new ObjectMapper();
-        this.baseBackoffMillis = DEFAULT_BASE_BACKOFF_MILLIS;
-        this.maxBackoffMillis = DEFAULT_MAX_BACKOFF_MILLIS;
+    @Autowired
+    public GroqClient(@Value("${groq.api.url}") String apiUrl,
+                      @Value("${groq.api.key}") String apiKey,
+                      @Value("${groq.api.model}") String model,
+                      @Value("${groq.api.connect-timeout-millis:" + DEFAULT_CONNECT_TIMEOUT_MILLIS + "}") long connectTimeoutMillis,
+                      @Value("${groq.api.read-timeout-millis:" + DEFAULT_READ_TIMEOUT_MILLIS + "}") long readTimeoutMillis,
+                      @Value("${groq.api.max-attempts:" + DEFAULT_MAX_ATTEMPTS + "}") int maxAttempts) {
+        this(HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofMillis(connectTimeoutMillis))
+                        .build(),
+                apiUrl, apiKey, model,
+                DEFAULT_BASE_BACKOFF_MILLIS, DEFAULT_MAX_BACKOFF_MILLIS,
+                maxAttempts, Duration.ofMillis(readTimeoutMillis));
     }
 
     /**
-     * Test-only constructor: injects a (mockable) HttpClient, the config values
-     * normally bound via {@code @Value}, and small backoff bounds so retry paths
-     * can be exercised without real-time sleeps.
+     * Test-only constructor: injects a (mockable) HttpClient and small backoff
+     * bounds so retry paths can be exercised without real-time sleeps.
      */
     GroqClient(HttpClient httpClient, String apiUrl, String apiKey, String model,
                long baseBackoffMillis, long maxBackoffMillis) {
+        this(httpClient, apiUrl, apiKey, model, baseBackoffMillis, maxBackoffMillis,
+                DEFAULT_MAX_ATTEMPTS, Duration.ofMillis(DEFAULT_READ_TIMEOUT_MILLIS));
+    }
+
+    private GroqClient(HttpClient httpClient, String apiUrl, String apiKey, String model,
+                       long baseBackoffMillis, long maxBackoffMillis,
+                       int maxAttempts, Duration readTimeout) {
+        if (maxAttempts < 1) {
+            throw new IllegalArgumentException("groq.api.max-attempts must be >= 1, was " + maxAttempts);
+        }
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
         this.apiUrl = apiUrl;
@@ -71,6 +84,8 @@ public class GroqClient {
         this.model = model;
         this.baseBackoffMillis = baseBackoffMillis;
         this.maxBackoffMillis = maxBackoffMillis;
+        this.maxAttempts = maxAttempts;
+        this.readTimeout = readTimeout;
     }
 
     /** The model name this client sends to Groq — the single source of truth for reporting. */
@@ -82,7 +97,7 @@ public class GroqClient {
      * Sends a prompt to the Groq chat completions API and returns the assistant's
      * message content as a raw string.
      *
-     * <p>Retries up to {@link #MAX_ATTEMPTS} times on network errors, 5xx responses,
+     * <p>Retries up to {@link #maxAttempts} times on network errors, 5xx responses,
      * and 429 (rate limit), with exponential backoff plus jitter between attempts.
      * For 429, honors a {@code Retry-After} / {@code retry-after-ms} header when present.
      * Other 4xx responses are not retried (they are client errors that will not succeed
@@ -93,7 +108,7 @@ public class GroqClient {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(apiUrl))
-                .timeout(READ_TIMEOUT)
+                .timeout(readTimeout)
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -102,7 +117,7 @@ public class GroqClient {
         IOException lastIoException = null;
         int lastStatusCode = -1;
 
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             long delayMillis;
             try {
                 HttpResponse<String> response = httpClient.send(request,
@@ -127,20 +142,20 @@ public class GroqClient {
                         ? retryAfterMillis(response).orElse(backoff)
                         : backoff;
                 log.warn("Groq API returned HTTP {} (attempt {}/{}); backing off {} ms",
-                        status, attempt, MAX_ATTEMPTS, delayMillis);
+                        status, attempt, maxAttempts, delayMillis);
 
             } catch (IOException e) {
                 lastIoException = e;
                 delayMillis = backoffMillis(attempt);
                 log.warn("Groq API network error on attempt {}/{}: {}; backing off {} ms",
-                        attempt, MAX_ATTEMPTS, e.getMessage(), delayMillis);
+                        attempt, maxAttempts, e.getMessage(), delayMillis);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new GroqApiException("Groq API call interrupted", e);
             }
 
             // Back off before the next attempt; skip the sleep after the final attempt.
-            if (attempt < MAX_ATTEMPTS) {
+            if (attempt < maxAttempts) {
                 sleep(delayMillis);
             }
         }
@@ -148,11 +163,11 @@ public class GroqClient {
         // All attempts exhausted
         if (lastIoException != null) {
             throw new GroqApiException(
-                    "Groq API failed after " + MAX_ATTEMPTS + " attempts: " + lastIoException.getMessage(),
+                    "Groq API failed after " + maxAttempts + " attempts: " + lastIoException.getMessage(),
                     lastIoException);
         }
         throw new GroqApiException(
-                "Groq API returned HTTP " + lastStatusCode + " after " + MAX_ATTEMPTS + " attempts",
+                "Groq API returned HTTP " + lastStatusCode + " after " + maxAttempts + " attempts",
                 lastStatusCode);
     }
 

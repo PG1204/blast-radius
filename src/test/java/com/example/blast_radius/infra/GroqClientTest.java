@@ -20,8 +20,8 @@ import static org.mockito.Mockito.when;
 
 class GroqClientTest {
 
-    /** Matches MAX_ATTEMPTS in GroqClient. */
-    private static final int MAX_ATTEMPTS = 4;
+    /** Matches DEFAULT_MAX_ATTEMPTS in GroqClient (the test constructor uses the default). */
+    private static final int MAX_ATTEMPTS = GroqClient.DEFAULT_MAX_ATTEMPTS;
 
     private static final String VALID_BODY =
             "{\"choices\":[{\"message\":{\"content\":\"{\\\"overallRisk\\\":\\\"LOW\\\"}\"}}]}";
